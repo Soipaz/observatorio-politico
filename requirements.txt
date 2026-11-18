@@ -1,5 +1,5 @@
 # Obrigatório: leitura dos anexos em PDF
-pypdf>=5.0
+pypdf>=7.1.0
 
 # Opcional: escrita automática das explicações e da análise pelo Claude (API da Anthropic)
 anthropic>=2.10
