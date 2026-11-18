@@ -1,0 +1,13 @@
+# LISTA DE ACOMPANHAMENTO PRIORITÁRIO
+# Uma proposição por linha:  fonte  SIGLA NÚMERO/ANO
+#
+# fontes:
+#   camara     Câmara dos Deputados         ex.: camara PL 1234/2026
+#   senado     Senado Federal               ex.: senado PLP 299/2026
+#   estado     Assembleia do seu estado     ex.: estado PL 409/2026
+#   municipio  Câmara do seu município      ex.: municipio PL 71/2026
+#
+# Linhas começando com # são ignoradas. Para parar de acompanhar, apague a linha ou comente com #.
+# Os itens daqui aparecem em destaque no relatório (seção "Acompanhadas"), com todo o histórico.
+
+# camara PL 1234/2026

@@ -1,0 +1,21 @@
+# Dados e resultados de cada instalação (não vão para o repositório)
+config.json
+acompanhar.txt
+dados/
+relatorios/
+analises/
+explicacoes/
+LEIA-ME.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Ferramentas locais
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

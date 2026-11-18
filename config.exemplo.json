@@ -1,0 +1,310 @@
+{
+ "local": null,
+ "estadual": null,
+ "municipal": null,
+ "obsidian_pasta": null,
+ "janela_padrao_dias": 7,
+ "tipos_camara": [
+  "PL",
+  "PLP",
+  "PEC",
+  "MPV"
+ ],
+ "tipos_senado": [
+  "PL",
+  "PLP",
+  "PEC",
+  "MPV",
+  "PLN"
+ ],
+ "eixos": {
+  "economia": {
+   "nome": "Economia e orçamento",
+   "cor": "#2a78d6",
+   "temas_camara": [
+    40,
+    70
+   ],
+   "termos": [
+    "tribut",
+    "imposto",
+    "orcament",
+    "fiscal",
+    "divida publica",
+    "credito suplementar",
+    "creditos suplementares",
+    "credito especial",
+    "creditos especiais",
+    "credito extraordinario",
+    "renuncia de receita",
+    "beneficio fiscal",
+    "beneficios fiscais",
+    "incentivo fiscal",
+    "isencao",
+    "juros",
+    "inflacao",
+    "banco central",
+    "sistema financeiro",
+    "diretrizes orcamentarias",
+    "plano plurianual",
+    "receita e fixa a despesa",
+    "subvencao",
+    "arcabouco",
+    "icms",
+    "ibs",
+    "cbs",
+    "lei complementar n 200",
+    "macroeconom",
+    "meta de resultado",
+    "resultado primario",
+    "regime fiscal",
+    "precos",
+    "combustive",
+    "contas publicas",
+    "gasto publico",
+    "despesa obrigatoria",
+    "imposto de renda",
+    "lucros e dividendos"
+   ]
+  },
+  "trabalho": {
+   "nome": "Trabalho e previdência",
+   "cor": "#1f9e6e",
+   "temas_camara": [
+    58,
+    52
+   ],
+   "termos": [
+    "trabalh",
+    "emprego",
+    "salari",
+    "remuneracao",
+    "consolidacao das leis do trabalho",
+    "previdenci",
+    "aposentad",
+    "inss",
+    "seguro-desemprego",
+    "seguro desemprego",
+    "fgts",
+    "sindic",
+    "jornada",
+    "empregado",
+    "empregador",
+    "piso salarial",
+    "servidores publicos",
+    "plano de carreira",
+    "contratacao temporaria",
+    "necessidade temporaria"
+   ]
+  },
+  "direitos": {
+   "nome": "Direitos e Constituição",
+   "cor": "#8e44ad",
+   "temas_camara": [
+    44,
+    68,
+    67
+   ],
+   "termos": [
+    "constituicao federal",
+    "emenda constitucional",
+    "direitos humanos",
+    "discrimina",
+    "igualdade",
+    "mulher",
+    "violencia domestica",
+    "maria da penha",
+    "crianca",
+    "adolescente",
+    "idoso",
+    "idosa",
+    "pessoa com deficiencia",
+    "pessoas com deficiencia",
+    "deficiencias ocultas",
+    "racial",
+    "racismo",
+    "indigena",
+    "quilombola",
+    "lgbt",
+    "liberdade de expressao",
+    "privacidade",
+    "dados pessoais",
+    "consumidor",
+    "acessibilidade",
+    "autismo",
+    "espectro autista",
+    "tea"
+   ]
+  },
+  "social": {
+   "nome": "Desigualdade e políticas sociais",
+   "cor": "#d9822b",
+   "temas_camara": [
+    52
+   ],
+   "termos": [
+    "assistencia social",
+    "bolsa familia",
+    "pobreza",
+    "fome",
+    "desigualdade",
+    "renda basica",
+    "beneficio de prestacao continuada",
+    "bpc",
+    "habitacao",
+    "moradia",
+    "vulnerabilidade",
+    "cadastro unico",
+    "suas",
+    "transferencia de renda",
+    "seguranca alimentar",
+    "situacao de rua",
+    "autonomia economica",
+    "inclusao social",
+    "programa social"
+   ]
+  },
+  "educacao": {
+   "nome": "Educação",
+   "cor": "#c0392b",
+   "temas_camara": [
+    46
+   ],
+   "termos": [
+    "educa",
+    "escola",
+    "escolar",
+    "ensino",
+    "professor",
+    "magisterio",
+    "universidade",
+    "universitari",
+    "estudante",
+    "aluno",
+    "fundeb",
+    "creche",
+    "alfabetiza",
+    "bolsa de estudo",
+    "pedagog"
+   ]
+  },
+  "saude": {
+   "nome": "Saúde",
+   "cor": "#16a085",
+   "temas_camara": [
+    56
+   ],
+   "termos": [
+    "saude",
+    "sus",
+    "hospital",
+    "medic",
+    "doenca",
+    "vacina",
+    "enfermag",
+    "sanitari",
+    "farmac",
+    "anvisa",
+    "plano de saude",
+    "saude mental",
+    "paciente",
+    "cancer",
+    "sofrimento psiquico",
+    "atencao basica",
+    "epidemi"
+   ]
+  },
+  "seguranca": {
+   "nome": "Segurança e justiça",
+   "cor": "#566573",
+   "temas_camara": [
+    43,
+    57
+   ],
+   "termos": [
+    "codigo penal",
+    "penal",
+    "crime",
+    "criminal",
+    "prisao",
+    "presidio",
+    "prisional",
+    "policia",
+    "seguranca publica",
+    "arma de fogo",
+    "armas",
+    "trafico",
+    "homicidio",
+    "furto",
+    "roubo",
+    "estupro",
+    "organizacao criminosa",
+    "guarda municipal",
+    "feminicidio",
+    "execucao penal",
+    "processo penal"
+   ]
+  },
+  "ambiente": {
+   "nome": "Meio ambiente",
+   "cor": "#6b8e23",
+   "temas_camara": [
+    48
+   ],
+   "termos": [
+    "ambient",
+    "clima",
+    "climatic",
+    "desmatamento",
+    "floresta",
+    "biodivers",
+    "poluic",
+    "residuos",
+    "reciclag",
+    "agrotox",
+    "recursos hidricos",
+    "licenciamento",
+    "animal",
+    "animais",
+    "fauna",
+    "unidade de conservacao",
+    "emissoes",
+    "carbono",
+    "energia renovavel",
+    "mineracao",
+    "enchente",
+    "inundac",
+    "desastre",
+    "defesa civil",
+    "bem-estar animal",
+    "mercurio",
+    "saneamento"
+   ]
+  }
+ },
+ "excluir_honorificos": [
+  "denomina ",
+  "inscreve o nome",
+  "livro dos herois",
+  "dia nacional",
+  "dia estadual",
+  "dia municipal",
+  "semana nacional",
+  "mes nacional",
+  "ano nacional",
+  "mes de conscientizacao",
+  "titulo de cidadao",
+  "homenage",
+  "confere o titulo",
+  "capital nacional",
+  "declara de utilidade publica",
+  "utilidade publica",
+  "galeria de"
+ ],
+ "ia": {
+  "ativo": false,
+  "modelo": "claude-opus-5-5",
+  "esforco": "medium",
+  "max_explicacoes_por_ciclo": 200
+ }
+}
