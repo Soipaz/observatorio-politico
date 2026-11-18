@@ -8,11 +8,15 @@ Configuração (config.json → "municipal" ou "estadual"):
    "nome": "Câmara Municipal de Pelotas", "esfera": "municipal", "siglas": ["PLO", "PLC", ...]}
 """
 import re
+from datetime import date
 from urllib.parse import urlencode
 
 from .util import baixar
 
-SIGLAS_PADRAO = ["PL", "PLO", "PLE", "PLL", "PLC", "PEC", "PELO", "PDL", "VET", "VETO", "VEP", "PI", "PINF"]
+# Decretos legislativos e indicações ficam de fora por padrão (nas Câmaras são quase sempre homenagens/pedidos);
+# inclua-os em "siglas" no config.json se quiser.
+SIGLAS_PADRAO = ["PL", "PLO", "PLE", "PLL", "PLC", "PEC", "PELO", "VET", "VETO", "VEP", "PINF"]
+ANOS_ANTIGOS = 2      # matérias de anos anteriores a isto só entram se já estiverem no banco
 MAX_PAGINAS = 30
 
 
@@ -54,7 +58,7 @@ def _tramite(t):
     status = partes[1] if len(partes) > 1 else ""
     texto = re.sub(r"<[^>]+>", " ", t.get("texto") or "").strip()
     desc = status + (f" — {texto}" if texto and texto.lower() not in status.lower() else "")
-    return {"data": t.get("data_tramitacao") or "", "descricao": desc or "Tramitação", "id": t["id"]}
+    return {"data": t.get("data_tramitacao") or "", "descricao": desc or "Tramitação", "id": t["id"], "rotulo": partes[0] if partes else ""}
 
 
 _autores = {}
@@ -159,7 +163,10 @@ def coletar(banco, clf, cfg, fonte, inicio, fim, log):
     def processar(m, trs):
         uid = f"{fonte['id']}:{m['id']}"
         processados.add(m["id"])
-        eixos = clf.classificar(m.get("ementa") or "")
+        ementa = m.get("ementa") or ""
+        if clf.honorifico(ementa) and not banco.existe(uid):
+            return  # títulos de cidadão, comendas, datas comemorativas
+        eixos = clf.classificar(ementa)
         if so_eixos and not eixos and not banco.existe(uid):
             return
         d = _montar(fonte, m, trs if trs else None)
@@ -177,13 +184,31 @@ def coletar(banco, clf, cfg, fonte, inicio, fim, log):
             processar(m, por_materia.get(m["id"]))
 
     # 2) matérias antigas que tramitaram na janela
+    #    - já conhecidas: atualiza com as tramitações da janela, sem reabrir a matéria;
+    #    - desconhecidas e recentes: abre uma a uma (servidores do SAPL costumam recusar consultas simultâneas).
+    limite_ano = date.fromisoformat(fim).year - ANOS_ANTIGOS
+    falhas = 0
     for mid, trs in por_materia.items():
         if mid in processados:
             continue
+        uid = f"{fonte['id']}:{mid}"
+        antigo = banco.obter(uid)
+        if antigo:
+            processados.add(mid)
+            d = dict(antigo, situacao=trs[-1]["descricao"], data_situacao=trs[-1]["data"], tramites=trs)
+            if salvar(banco, d, clf, fonte, []) == "mudou":
+                res["mudancas"].append(uid)
+            res["votacoes"] += _decisao(banco, d, inicio, fonte)
+            continue
+        ano = re.search(r"de (\d{4})", trs[0].get("rotulo", ""))
+        if ano and int(ano[1]) < limite_ano:
+            continue
         try:
             processar(_api(fonte, f"materia/materialegislativa/{mid}/"), trs)
-        except RuntimeError as e:
-            log(f"  aviso: {e}")
+        except RuntimeError:
+            falhas += 1
+    if falhas:
+        log(f"  aviso: {falhas} matérias não puderam ser abertas (servidor ocupado); serão tentadas no próximo ciclo")
 
     # 3) acompanhadas sem tramitação na janela: atualiza mesmo assim
     for r in banco.acompanhadas(fonte["id"]):

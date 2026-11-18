@@ -1,0 +1,41 @@
+name: Verificar
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+      - name: Compilar todos os arquivos
+        run: python -m compileall -q observatorio.py obs
+      - name: Importar todos os módulos
+        run: |
+          python -c "import obs.camara, obs.senado, obs.sapl, obs.alrs, obs.votacaoeletronica, obs.locais, obs.textos, obs.relatorio, obs.configurar, obs.ia, obs.db, obs.util"
+      - name: Gerar relatório de exemplo (sem rede)
+        run: |
+          cp config.exemplo.json config.json
+          python - <<'EOF'
+          from obs.db import Banco
+          from obs import relatorio
+          from obs.util import carregar_config
+          b = Banco()
+          b.iniciar_ciclo("2026-01-01", "2026-01-07")
+          b.salvar({"uid": "camara:1", "fonte": "camara", "esfera": "federal", "casa": "Câmara dos Deputados",
+                    "sigla": "PL", "numero": "1", "ano": 2026, "identificacao": "PL 1/2026",
+                    "ementa": "Dispõe sobre teste.", "data_apresentacao": "2026-01-02", "url": "https://example.org",
+                    "eixos": ["saude"]})
+          b.fechar_ciclo({})
+          print(relatorio.gerar(b, b.ultimo_ciclo(), carregar_config()))
+          EOF

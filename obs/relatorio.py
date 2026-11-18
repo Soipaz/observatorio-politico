@@ -116,7 +116,8 @@ def md_para_html(md):
             item = re.sub(r"^\s*([-*]|\d+\.)\s+", "", inl)
             out.append(f"<li>{item}</li>")
         elif s.startswith(">"):
-            out.append(f"<blockquote>{re.sub(r'^&gt;\s*', '', inl)}</blockquote>")
+            citacao = re.sub(r"^&gt;\s*", "", inl)
+            out.append(f"<blockquote>{citacao}</blockquote>")
         else:
             out.append(f"<p>{inl}</p>")
     if lista:
