@@ -27,6 +27,19 @@ def e(t):
     return html.escape(str(t or ""))
 
 
+def u(url):
+    """URL segura para href/markdown: só http(s); qualquer outra coisa vira '#'."""
+    url = str(url or "").strip()
+    return url if url.lower().startswith(("https://", "http://")) else "#"
+
+
+def nome_seguro(t):
+    """Nome de arquivo sem separadores de pasta nem caracteres proibidos no Windows."""
+    t = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "-", str(t or ""))
+    t = re.sub(r"\.{2,}", ".", t).strip(" .")
+    return t[:120] or "sem-nome"
+
+
 def data_br(iso):
     if not iso:
         return ""
@@ -209,9 +222,9 @@ def tags(p, cfg):
 
 def cartao(p, cfg, extra="", hot=False):
     eix = p.get("eixos") or "outros"
-    links = [f'<a href="{e(p["url"])}" target="_blank" rel="noopener">Ficha oficial</a>'] if p.get("url") else []
+    links = [f'<a href="{e(u(p["url"]))}" target="_blank" rel="noopener">Ficha oficial</a>'] if p.get("url") else []
     if p.get("url_texto"):
-        links.append(f'<a href="{e(p["url_texto"])}" target="_blank" rel="noopener">Inteiro teor</a>')
+        links.append(f'<a href="{e(u(p["url_texto"]))}" target="_blank" rel="noopener">Inteiro teor</a>')
     apelido = f'<span class="apelido">“{e(p["apelido"])}”</span>' if p.get("apelido") else ""
     situ = f'<b>Situação:</b> {e(p["situacao"])}' + (f' ({data_br(p["data_situacao"])})' if p.get("data_situacao") else "") if p.get("situacao") else ""
     orgao = f' · <b>Órgão:</b> {e(p["orgao"])}' if p.get("orgao") and p.get("esfera") != "municipal" else ""
@@ -230,7 +243,7 @@ def lista_eventos(evs, ini):
         return ""
     itens = "".join(
         f'<li class="{"novo" if (x["data"] or "")[:10] >= ini else ""}"><span class="d">{data_br(x["data"])}</span>{e(x["descricao"])}'
-        + (f' <a href="{e(x["url"])}" target="_blank" rel="noopener">[doc]</a>' if x.get("url") else "") + "</li>" for x in evs)
+        + (f' <a href="{e(u(x["url"]))}" target="_blank" rel="noopener">[doc]</a>' if x.get("url") else "") + "</li>" for x in evs)
     return f'<ul class="ev">{itens}</ul>'
 
 
@@ -271,7 +284,7 @@ def html_relatorio(d, cfg, analise_html):
         res = (v["resultado"] or "").lower()
         cls = "res-aprovada" if "aprov" in res else "res-rejeitada" if "rejeit" in res else ""
         linhas_dec += (f'<tr data-eixos="{e(v["eixos"] or "outros")}"><td>{data_br(v["data"])}</td><td>{e(v["orgao"])}</td>'
-                       f'<td><a href="{e(v["url"])}" target="_blank" rel="noopener">{e(v["identificacao"] or "—")}</a></td>'
+                       f'<td><a href="{e(u(v["url"]))}" target="_blank" rel="noopener">{e(v["identificacao"] or "—")}</a></td>'
                        f'<td>{e(v["descricao"])}{dec_exp(v)}</td><td class="{cls}">{e(v["resultado"])}</td></tr>')
     tabela_dec = (f'<div class="tablewrap"><table><thead><tr><th>Data</th><th>Órgão</th><th>Proposição</th><th>Decisão registrada</th><th>Resultado</th></tr></thead><tbody>{linhas_dec}</tbody></table></div>'
                   if linhas_dec else '<p class="sub">Nenhuma votação ou deliberação registrada na janela.</p>')
@@ -292,7 +305,7 @@ def html_relatorio(d, cfg, analise_html):
         obs_ = N["obs_municipal"] if esfera == "municipal" else N["obs_estadual"]
         url = N["url_municipal"] if esfera == "municipal" else N["url_estadual"]
         aviso = (f'<div class="aviso"><b>Cobertura declarada:</b> {obs_}</div>' if obs_ else "")
-        consulta = f'<p class="sub">Consulta direta: <a href="{e(url)}" target="_blank" rel="noopener">{e(casa)}</a></p>' if url else ""
+        consulta = f'<p class="sub">Consulta direta: <a href="{e(u(url))}" target="_blank" rel="noopener">{e(casa)}</a></p>' if url else ""
         return (f'<section id="{esfera}"><h2>{{n}}. {e(titulo)}</h2>{corpo}<h3>Movimentações</h3>{mov_cards(movs)}{aviso}{consulta}</section>')
 
     locais_ = []
@@ -307,7 +320,7 @@ def html_relatorio(d, cfg, analise_html):
         tiles_locais += f'<div class="tile"><b>{qtd}</b><span>{e(rot)}</span></div>'
     n_metodo = 7 + len(locais_)
     fontes_locais = "".join(f"; {e(f['nome'])}" for f in locais.fontes(cfg))
-    links_fontes = "".join(f'<a href="{e(f["url"])}" target="_blank" rel="noopener">{e(f["nome"])}</a> · ' for f in locais.fontes(cfg))
+    links_fontes = "".join(f'<a href="{e(u(f["url"]))}" target="_blank" rel="noopener">{e(f["nome"])}</a> · ' for f in locais.fontes(cfg))
     dec_local = (f" {e(N['sigla_estadual'])}: matérias aprovadas ou rejeitadas na janela." if N.get("tem_estadual") else "")
     if not locais_:
         secoes_locais = ('<div class="aviso">Nenhuma Assembleia ou Câmara Municipal configurada. Rode <code>python observatorio.py configurar</code> '
@@ -362,20 +375,20 @@ def html_indice(cfg):
 # ---------------------------------------------------------------- Obsidian
 
 def nome_nota(p):
-    return f"{p['identificacao'].replace('/', '-')} ({CASA_CURTA.get(p['fonte'], p['fonte'])})"
+    return nome_seguro(f"{p['identificacao'].replace('/', '-')} ({CASA_CURTA.get(p['fonte'], p['fonte'])})")
 
 
 def nota_proposicao(p, cfg):
     eixos = [cfg["eixos"][x]["nome"] for x in (p["eixos"] or "").split(",") if x in cfg["eixos"]]
     tags_ = " ".join("observatorio/" + x for x in (p["eixos"] or "").split(",") if x)
-    evs = "\n".join(f"- **{data_br(x['data'])}** — {x['descricao']}" + (f" ([doc]({x['url']}))" if x.get("url") else "") for x in p["eventos"])
+    evs = "\n".join(f"- **{data_br(x['data'])}** — {x['descricao']}" + (f" ([doc]({u(x['url'])}))" if x.get("url") else "") for x in p["eventos"])
     auto = f"""<!-- auto:inicio — esta parte é atualizada pelo observatório; escreva abaixo de 'Minhas anotações' -->
 > [!info] {p['identificacao']} — {p['casa']}{(' · “' + p['apelido'] + '”') if p.get('apelido') else ''}
 > **Ementa:** {p['ementa']}
 > **Autoria:** {p.get('autor') or '—'} · **Apresentação:** {data_br(p.get('data_apresentacao'))}
 > **Situação atual:** {p.get('situacao') or '—'} ({data_br(p.get('data_situacao'))})
 > **Eixos:** {', '.join(eixos) or '—'}
-> [Ficha oficial]({p['url']}){(' · [Inteiro teor](' + p['url_texto'] + ')') if p.get('url_texto') else ''}
+> [Ficha oficial]({u(p['url'])}){(' · [Inteiro teor](' + u(p['url_texto']) + ')') if p.get('url_texto') else ''}
 
 ### Do que se trata
 {ler_explicacao(p['uid']) or '*Explicação ainda não escrita.*'}
@@ -450,7 +463,7 @@ def escrever_obsidian(d, cfg, analise_md):
         exp = ler_explicacao(p["uid"])
         m = re.search(r"\*\*Em poucas palavras:\*\*\s*(.+)", exp)
         resumo = m[1].strip() if m else p["ementa"][:220] + ("…" if len(p["ementa"]) > 220 else "")
-        return f"- **{p['identificacao']}** ({p['casa']}) — {resumo} [ficha]({p['url']})"
+        return f"- **{p['identificacao']}** ({p['casa']}) — {resumo} [ficha]({u(p['url'])})"
 
     blocos = []
     for k, v in cfg["eixos"].items():

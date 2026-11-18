@@ -9,6 +9,12 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 UA = "ObservatorioPolitico/1.0 (uso pessoal; dados abertos)"
+MAX_RESPOSTA = 50 * 1024 * 1024  # proteção contra respostas gigantes de servidores mal configurados
+
+
+def url_permitida(url):
+    """Só aceita endereços http(s). Impede que uma fonte externa aponte para arquivos locais (file://) etc."""
+    return isinstance(url, str) and url.lower().startswith(("https://", "http://"))
 
 
 def carregar_config():
@@ -18,12 +24,16 @@ def carregar_config():
 
 def baixar(url, json_=True, tentativas=3, timeout=60):
     """GET com repetição. Retorna JSON (dict/list) ou texto."""
+    if not url_permitida(url):
+        raise RuntimeError(f"Endereço recusado (só http/https): {url[:80]}")
     erro = None
     for i in range(tentativas):
         try:
             req = urllib.request.Request(url, headers={"Accept": "application/json" if json_ else "text/html", "User-Agent": UA})
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                dados = r.read()
+                dados = r.read(MAX_RESPOSTA + 1)
+            if len(dados) > MAX_RESPOSTA:
+                raise RuntimeError(f"Resposta grande demais de {url[:80]}")
             texto = dados.decode("utf-8", errors="replace")
             return json.loads(texto) if json_ else texto
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ConnectionError) as e:

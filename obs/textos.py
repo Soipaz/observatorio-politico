@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
-from .util import RAIZ, UA, baixar, carregar_config
+from .util import RAIZ, UA, baixar, carregar_config, url_permitida
 
 PASTA_TXT = RAIZ / "dados" / "textos"
 PASTA_EXP = RAIZ / "explicacoes"
@@ -55,6 +55,8 @@ def _meta_explicacao(uid):
 # ---------------------------------------------------------------- download
 
 def _baixar_bytes(url, tentativas=3):
+    if not url_permitida(url):
+        raise ValueError("endereço recusado (só http/https)")
     erro = None
     for i in range(tentativas):
         try:
