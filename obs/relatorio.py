@@ -116,7 +116,11 @@ def montar(banco, ciclo, cfg):
         for x in (p["eixos"] or "").split(","):
             if x in contagem:
                 contagem[x] += 1
-    return {"ciclo": cid, "inicio": ini, "fim": fim, "executado_em": ciclo["executado_em"],
+    # nome dos arquivos: a data; se houver mais de uma atualização no mesmo dia, AAAA-MM-DD-2, -3...
+    mesmo_dia = [r[0] for r in c.execute("SELECT id FROM ciclos WHERE fim=? AND resumo IS NOT NULL ORDER BY id", (fim,))]
+    ordem = mesmo_dia.index(cid) + 1 if cid in mesmo_dia else 1
+    rotulo = fim if ordem == 1 else f"{fim}-{ordem}"
+    return {"ciclo": cid, "inicio": ini, "fim": fim, "rotulo": rotulo, "ordem_no_dia": ordem, "executado_em": ciclo["executado_em"],
             "novas": novas, "movimentadas": movimentadas, "decisoes": decisoes,
             "acompanhadas": acompanhadas, "contagem_eixos": contagem, "erros": erros, "mudancas": mudancas}
 
@@ -550,7 +554,7 @@ def html_relatorio(d, cfg, analise_html):
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Observatório Político — {data_br(fim)}</title><style>{CSS}</style></head><body><div class="wrap">
 <header class="top"><div class="kicker">Observatório Político · {e(N['titulo'])} · Ciclo {d['ciclo']}</div>
-<h1>Relatório semanal — {data_extenso(fim)}</h1>
+<h1>Relatório — {data_extenso(fim)}{" (" + str(d["ordem_no_dia"]) + "ª atualização do dia)" if d.get("ordem_no_dia", 1) > 1 else ""}</h1>
 <p class="sub">Janela de coleta: {data_br(ini)} a {data_br(fim)} · Coleta executada em {data_br(d['executado_em'])} às {d['executado_em'][11:16]} · Fontes: APIs oficiais da Câmara e do Senado{fontes_locais}</p>
 <nav class="toc"><a href="#resumo">1. Resumo</a><a href="#mudancas">O que mudou</a><a href="#analise">2. Análise</a><a href="#acompanhadas">3. Acompanhadas</a><a href="#decisoes">4. Decisões</a><a href="#novas">5. Novas federais</a><a href="#movimentacoes">6. Tramitação</a>{nav_local}<a href="#metodo">{n_metodo}. Método</a><a href="index.html">Todos os relatórios</a></nav></header>
 {erros}
@@ -583,8 +587,9 @@ def html_relatorio(d, cfg, analise_html):
 
 def html_indice(cfg):
     itens = []
-    for f in sorted(PASTA_REL.glob("20*.html"), reverse=True):
-        itens.append(f'<li><a href="{f.name}">Relatório de {data_extenso(f.stem[:10])}</a></li>')
+    for f in sorted(PASTA_REL.glob("20*.html"), key=lambda f: (f.stem[:10], int(f.stem[11:] or 1)), reverse=True):
+        extra = f" ({f.stem[11:]}ª atualização do dia)" if len(f.stem) > 10 else ""
+        itens.append(f'<li><a href="{f.name}">Relatório de {data_extenso(f.stem[:10])}{extra}</a></li>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Observatório Político</title><style>{CSS} li{{margin:6px 0;font-size:17px}} li a{{color:var(--accent)}}</style></head><body><div class="wrap">
 <header class="top"><div class="kicker">{e(N.get("titulo", "Brasil"))}</div><h1>Observatório Político</h1><p class="sub">Relatórios semanais a partir de fontes oficiais</p></header>
@@ -715,9 +720,9 @@ ciclo: {d['ciclo']}
 janela: {d['inicio']} a {d['fim']}
 tags: [observatorio/relatorio]
 ---
-# Observatório Político — {data_extenso(d['fim'])}
+# Observatório Político — {data_extenso(d['fim'])}{f" ({d['ordem_no_dia']}ª atualização do dia)" if d.get('ordem_no_dia', 1) > 1 else ""}
 
-Janela: {data_br(d['inicio'])} a {data_br(d['fim'])} · [Abrir relatório completo (HTML)](file:///{(PASTA_REL / (d['fim'] + '.html')).as_posix()})
+Janela: {data_br(d['inicio'])} a {data_br(d['fim'])} · [Abrir relatório completo (HTML)](file:///{(PASTA_REL / (d['rotulo'] + '.html')).as_posix()})
 
 ## O que mudou desde a última atualização
 {bloco_mud}
@@ -737,7 +742,7 @@ Janela: {data_br(d['inicio'])} a {data_br(d['fim'])} · [Abrir relatório comple
 {chr(10).join(blocos) or '- Nenhuma.'}
 
 {bloco_local}"""
-    arq = base / "Relatórios" / f"{d['fim']} Observatório.md"
+    arq = base / "Relatórios" / f"{d['rotulo']} Observatório.md"
     arq.write_text(nota, encoding="utf-8")
     gerados.append(arq)
 
@@ -765,7 +770,7 @@ def gerar(banco, ciclo, cfg):
     PASTA_ANA.mkdir(exist_ok=True)
     configurar_nomes(cfg)
     d = montar(banco, ciclo, cfg)
-    arq_ana = PASTA_ANA / f"{d['fim']}.md"
+    arq_ana = PASTA_ANA / f"{d['rotulo']}.md"
     analise_md = arq_ana.read_text(encoding="utf-8") if arq_ana.exists() else ""
 
     # JSON enxuto para a análise acadêmica
@@ -783,10 +788,10 @@ def gerar(banco, ciclo, cfg):
                             outras_mudancas=[{k: x[k] for k in ("campo", "antes", "depois")} for x in p["outros_campos"]],
                             significado=p["significados"]) for p in d.get("mudancas") or []],
           "erros": d["erros"]}
-    arq_json = PASTA_REL / f"{d['fim']}.json"
+    arq_json = PASTA_REL / f"{d['rotulo']}.json"
     arq_json.write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
 
-    arq_html = PASTA_REL / f"{d['fim']}.html"
+    arq_html = PASTA_REL / f"{d['rotulo']}.html"
     arq_html.write_text(html_relatorio(d, cfg, md_para_html(analise_md) if analise_md else ""), encoding="utf-8")
     (PASTA_REL / "index.html").write_text(html_indice(cfg), encoding="utf-8")
     (PASTA_REL / "ultimo.html").write_text(arq_html.read_text(encoding="utf-8"), encoding="utf-8")
