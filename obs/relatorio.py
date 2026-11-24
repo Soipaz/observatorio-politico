@@ -61,6 +61,8 @@ def montar(banco, ciclo, cfg):
     c = banco.con
     ini, fim, cid = ciclo["inicio"], ciclo["fim"], ciclo["id"]
     props = {r["uid"]: dict(r) for r in c.execute("SELECT * FROM proposicoes")}
+    for p in props.values():
+        p["autor"] = autor_com_partido(banco, p)
 
     novas = [props[r["uid"]] for r in c.execute(
         "SELECT DISTINCT uid FROM eventos WHERE ciclo=? AND tipo='apresentacao'", (cid,))
@@ -75,6 +77,11 @@ def montar(banco, ciclo, cfg):
     movimentadas = [dict(props[u], eventos=ev) for u, ev in movs.items()]
 
     decisoes = [dict(r) for r in c.execute("SELECT * FROM votacoes WHERE ciclo=? ORDER BY fonte, data", (cid,))]
+    for v in decisoes:
+        v["votos"] = banco.votos(v["id"])
+        if v["votos"] and not v.get("placar"):
+            from .db import placar_de
+            v["placar"] = placar_de(v["votos"])
 
     acompanhadas = []
     for p in (props[u] for u in props if props[u]["acompanhar"]):
@@ -84,6 +91,19 @@ def montar(banco, ciclo, cfg):
     acompanhadas.sort(key=lambda p: (not p["mexeu"], p["fonte"], p["identificacao"]))
 
     mudancas = montar_mudancas(c, cid, props)
+    por_uid = {}
+    for v in decisoes:
+        if v.get("uid"):
+            por_uid.setdefault(v["uid"], []).append(v)
+    por_ident = {}  # projetos federais mantêm o número ao passar de uma Casa para a outra
+    for v in decisoes:
+        if v.get("fonte") in ("camara", "senado") and v.get("identificacao"):
+            por_ident.setdefault(v["identificacao"], []).append(v)
+    for p in mudancas:
+        vs = list(por_uid.get(p["uid"], []))
+        if p.get("esfera") == "federal":
+            vs += [v for v in por_ident.get(p["identificacao"], []) if v not in vs]
+        p["votacoes"] = sorted(vs, key=lambda v: v.get("data") or "")
     mudaram = {p["uid"] for p in mudancas}
     for p in acompanhadas:  # quem mudou desde a última atualização também conta como "movimentou"
         p["mexeu"] = p["mexeu"] or p["uid"] in mudaram
@@ -104,6 +124,16 @@ def montar(banco, ciclo, cfg):
 ROTULO_CAMPO = {"ementa": "A ementa (resumo oficial do projeto) foi alterada",
                 "url_texto": "Saiu uma nova versão do texto (inteiro teor)",
                 "orgao": "O projeto mudou de órgão/comissão"}
+
+
+def autor_com_partido(banco, p):
+    """Acrescenta o partido ao autor quando a fonte não traz (ex.: ALRS), usando os partidos vistos nas votações."""
+    autor = p.get("autor") or ""
+    if not autor or "(" in autor or p.get("fonte") in ("camara", "senado"):
+        return autor
+    nome = re.sub(r"^(Deputad[oa]\(?a?\)?|Vereador[a]?|Ver\.ª?|Verª\.?)\s+", "", autor).strip()
+    partido, _ = banco.partido_de(p["fonte"], nome)
+    return f"{autor} ({partido})" if partido else autor
 
 
 def montar_mudancas(c, cid, props):
@@ -237,6 +267,17 @@ nav.toc a{color:var(--accent);text-decoration:none}
 .significa{background:var(--warn-soft);border-left:4px solid var(--warn);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:15px}
 .significa .explica-t{color:var(--warn)}
 .significa ul{margin:4px 0;padding-left:20px}
+.votos{margin:6px 0}
+.placar{font-weight:700;font-size:14px}
+.votacao-mud{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}
+table.por-partido{width:auto;min-width:50%;font-size:13px;margin:6px 0}
+table.por-partido td,table.por-partido th{padding:3px 10px;text-align:center}
+table.por-partido td:first-child,table.por-partido th:first-child{text-align:left}
+.grupo-voto{margin:6px 0}
+.voto-t{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+ul.nomes{columns:3 220px;font-size:12.5px;margin:4px 0;padding-left:18px}
+ul.nomes li{break-inside:avoid}
+ul.nomes span{color:var(--muted)}
 .tag-acomp{font-size:11.5px;border-radius:4px;padding:1px 7px;background:var(--ink);color:var(--bg);font-weight:600}
 @media (max-width:600px){.diff{grid-template-columns:1fr}.diff .seta{transform:rotate(90deg);justify-self:center}}
 td .explica{font-size:14px;margin:6px 0 0}
@@ -304,6 +345,53 @@ def negrito(t):
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", e(t))
 
 
+VOTO_ORDEM = {"sim": 0, "favorável": 0, "favoravel": 0, "não": 1, "nao": 1, "contrário": 1, "contrario": 1,
+              "abstenção": 2, "abstencao": 2}
+
+
+ROTULO_VOTO = {"artigo 17": "Presidente da sessão (não vota)", "art. 17": "Presidente da sessão (não vota)",
+               "obstrução": "Obstrução (não votou, para atrasar a votação)"}
+
+
+def bloco_votos(v, compacto=False, sem_nomes=False):
+    """Placar + como votou cada parlamentar (por partido e por nome)."""
+    votos = [dict(x, voto=ROTULO_VOTO.get((x.get("voto") or "").lower(), x.get("voto"))) for x in (v.get("votos") or [])]
+    placar = (v.get("placar") or "").replace("Artigo 17", "Presidente da sessão")
+    if not votos:
+        tipo = v.get("tipo_votacao") or ""
+        if tipo == "simbólica":
+            nota = "Votação simbólica: a Casa registra só o resultado, sem o voto de cada parlamentar."
+        elif tipo == "secreta":
+            nota = "Votação secreta: o voto de cada parlamentar não é divulgado."
+        elif v.get("fonte") in ("camara", "senado"):
+            nota = "Sem registro nominal publicado para esta decisão (em geral, votação simbólica)."
+        else:
+            nota = "Esta Casa não publica o voto de cada parlamentar; só o resultado."
+        return f'<div class="votos"><div class="placar">{e(placar) if placar else ""}</div><p class="meta">{e(nota)}</p></div>'
+    from collections import Counter, defaultdict
+    tabela = defaultdict(Counter)
+    for x in votos:
+        tabela[x.get("partido") or "—"][(x.get("voto") or "?")] += 1
+    tipos_voto = sorted({(x.get("voto") or "?") for x in votos}, key=lambda t: (VOTO_ORDEM.get(t.lower(), 3), t))
+    cab = "".join(f"<th>{e(t)}</th>" for t in tipos_voto)
+    linhas = "".join(f"<tr><td><b>{e(par)}</b></td>" + "".join(f"<td>{cont.get(t, 0) or ''}</td>" for t in tipos_voto) + "</tr>"
+                     for par, cont in sorted(tabela.items(), key=lambda kv: (-sum(kv[1].values()), kv[0])))
+    por_voto = defaultdict(list)
+    for x in votos:
+        por_voto[x.get("voto") or "?"].append(x)
+    nomes = "".join(
+        f'<div class="grupo-voto"><div class="voto-t">{e(t)} ({len(por_voto[t])})</div><ul class="nomes">'
+        + "".join(f'<li>{e(x["nome"])} <span>({e(x.get("partido") or "—")}{"/" + e(x["uf"]) if x.get("uf") else ""})</span></li>'
+                  for x in sorted(por_voto[t], key=lambda x: ((x.get("partido") or ""), x["nome"] or "")))
+        + "</ul></div>" for t in tipos_voto)
+    if sem_nomes:  # a lista nominal já aparece no card da proposição, em "O que mudou"
+        nomes = '<p class="meta">O nome e o partido de cada parlamentar estão no card desta proposição, na seção "O que mudou".</p>'
+    return (f'<div class="votos"><div class="placar">{e(placar)}</div>'
+            f'<details><summary>Como votou cada parlamentar ({len(votos)})</summary>'
+            f'<div class="tablewrap"><table class="por-partido"><thead><tr><th>Partido</th>{cab}</tr></thead><tbody>{linhas}</tbody></table></div>'
+            f'{nomes}</details></div>')
+
+
 def cartao_mudanca(p, cfg):
     exp = ler_explicacao(p["uid"])
     import re as _re
@@ -330,9 +418,19 @@ def cartao_mudanca(p, cfg):
             + (f' <a href="{e(u(x["url"]))}" target="_blank" rel="noopener">[doc]</a>' if x.get("url") else "") + "</li>"
             for x in p["novos_eventos"]) + "</ul>"
     acomp = '<span class="tag-acomp">ACOMPANHADA</span>' if p.get("acompanhar") else ""
+    votacoes_html = ""
+    for v in p.get("votacoes") or []:
+        res = (v.get("resultado") or "").lower()
+        cls = "res-aprovada" if "aprov" in res else "res-rejeitada" if "rejeit" in res else ""
+        votacoes_html += (f'<div class="votacao-mud"><div class="meta"><b>Votação</b> · {data_br(v["data"])} · {e(v["orgao"])}'
+                          f'{" · <span class=" + chr(34) + cls + chr(34) + ">" + e(v["resultado"]) + "</span>" if v.get("resultado") else ""}</div>'
+                          f'<div class="meta">{e(v["descricao"][:220])}</div>{bloco_votos(v)}</div>')
+    if not votacoes_html and p.get("esfera") == "municipal" and any(k in (p.get("agora") or "").lower() for k in ("aprovad", "rejeitad")):
+        votacoes_html = ('<div class="votacao-mud">' + bloco_votos({"fonte": p["fonte"], "placar": p.get("agora")}) + "</div>")
     return f"""<article class="card{' hot' if p.get('acompanhar') else ''}" data-eixos="{e(p.get('eixos') or 'outros')}">
 <div class="head"><span class="id">{e(p['identificacao'])}</span><span class="casa">{e(p['casa'])}</span>{acomp}{tags(p, cfg)}</div>
-<p class="ementa">{negrito(resumo)}</p>{diff}{campos}{sig}{evs}
+<p class="ementa">{negrito(resumo)}</p>
+<div class="meta"><b>Autoria:</b> {e(p.get('autor') or '—')}</div>{diff}{campos}{sig}{votacoes_html}{evs}
 <div class="links"><a href="{e(u(p['url']))}" target="_blank" rel="noopener">Ficha oficial</a></div></article>"""
 
 
@@ -397,13 +495,14 @@ def html_relatorio(d, cfg, analise_html):
         exp = ler_explicacao(v["uid"]) if v.get("uid") else ""
         return f'<details><summary>Do que se trata</summary><div class="explica">{md_para_html(exp)}</div></details>' if exp else ""
 
+    ja_listadas = {v["id"] for p in d.get("mudancas") or [] for v in p.get("votacoes") or []}
     linhas_dec = ""
     for v in d["decisoes"]:
         res = (v["resultado"] or "").lower()
         cls = "res-aprovada" if "aprov" in res else "res-rejeitada" if "rejeit" in res else ""
         linhas_dec += (f'<tr data-eixos="{e(v["eixos"] or "outros")}"><td>{data_br(v["data"])}</td><td>{e(v["orgao"])}</td>'
                        f'<td><a href="{e(u(v["url"]))}" target="_blank" rel="noopener">{e(v["identificacao"] or "—")}</a></td>'
-                       f'<td>{e(v["descricao"])}{dec_exp(v)}</td><td class="{cls}">{e(v["resultado"])}</td></tr>')
+                       f'<td>{e(v["descricao"])}{dec_exp(v)}{bloco_votos(v, sem_nomes=v["id"] in ja_listadas)}</td><td class="{cls}">{e(v["resultado"])}</td></tr>')
     tabela_dec = (f'<div class="tablewrap"><table><thead><tr><th>Data</th><th>Órgão</th><th>Proposição</th><th>Decisão registrada</th><th>Resultado</th></tr></thead><tbody>{linhas_dec}</tbody></table></div>'
                   if linhas_dec else '<p class="sub">Nenhuma votação ou deliberação registrada na janela.</p>')
 
@@ -675,7 +774,8 @@ def gerar(banco, ciclo, cfg):
                     explicacao=ler_explicacao(p["uid"]))
     js = {"ciclo": d["ciclo"], "janela": [d["inicio"], d["fim"]],
           "acompanhadas": [dict(enxuto(p), movimentou=p["mexeu"], eventos=[{k: x[k] for k in ("data", "descricao", "url")} for x in p["eventos"]]) for p in d["acompanhadas"]],
-          "decisoes": [{k: v[k] for k in ("data", "orgao", "uid", "identificacao", "descricao", "resultado", "url", "eixos")} for v in d["decisoes"]],
+          "decisoes": [dict({k: v.get(k) for k in ("data", "orgao", "uid", "identificacao", "descricao", "resultado", "url", "eixos", "placar", "tipo_votacao")},
+                           votos=v.get("votos") or []) for v in d["decisoes"]],
           "novas": [enxuto(p) for p in d["novas"]],
           "movimentadas": [dict(enxuto(p), eventos=[{k: x[k] for k in ("data", "descricao")} for x in p["eventos"]]) for p in d["movimentadas"]],
           "mudancas": [dict(enxuto(p), acompanhada=bool(p.get("acompanhar")), antes=p["antes"], agora=p["agora"],

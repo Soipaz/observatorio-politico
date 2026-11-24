@@ -15,7 +15,8 @@ O relatório semanal (HTML e, se você quiser, notas no Obsidian) traz:
 
 - **o que mudou desde a última atualização**: para cada proposição que andou, a situação de antes e a de agora, os novos andamentos e, em linguagem simples, o que isso significa (as proposições acompanhadas aparecem primeiro);
 - **novas proposições** nos 8 eixos temáticos: economia/orçamento, trabalho/previdência, direitos/Constituição, desigualdade/políticas sociais, educação, saúde, segurança/justiça e meio ambiente;
-- **votações e decisões** da semana;
+- **votações e decisões** da semana, com o **placar** e **como votou cada parlamentar** (nome, partido e estado), quando a Casa publica o voto nominal (Câmara, Senado e Assembleia do RS);
+- **autoria com partido** em todas as proposições;
 - **tramitação** das proposições acompanhadas, com linha do tempo;
 - um quadro **"Do que se trata"** para cada item, escrito a partir da leitura dos anexos oficiais: texto do projeto, justificativa, mensagem e parecer;
 - uma **análise do ciclo** em 5 dimensões (jurídica, econômica, social, institucional e empírica).

@@ -31,6 +31,8 @@ CSS_IMPRESSAO = """<style>
  h2{break-after:avoid}
  a{color:#0a4d8c!important;text-decoration:none}
  details>summary{display:none}
+ ul.nomes{columns:4;font-size:9px;line-height:1.25}
+ table.por-partido{font-size:10px}
 }
 </style>"""
 

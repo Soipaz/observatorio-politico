@@ -57,6 +57,30 @@ def _tabela(t, id_):
     return linhas
 
 
+def _votacoes(t):
+    """Blocos de votação da página (comissões e Plenário), com o voto de cada deputado e seu partido."""
+    i = t.find('id="content-votacoes"')
+    if i < 0:
+        return []
+    fim = t.find('id="content-', i + 10)
+    secao = t[i: fim if fim > 0 else len(t)]
+    saida = []
+    for bloco in re.split(r'<div class="votacao-bloco">', secao)[1:]:
+        titulo = _txt((re.search(r'<span class="titulo">(.*?)</span>', bloco, re.S) or [None, ""])[1])
+        resumo = _txt((re.search(r'<div class="votacao-resumo">(.*?)</div>\s*</div>', bloco, re.S) or [None, ""])[1])
+        resultado = (re.search(r"Resultado da Votação:\s*([^T]+?)\s*(?:Total|$)", resumo) or [None, ""])[1].strip()
+        totais = re.findall(r"Total (?:de Votos|Favorável|Contrário)[^:]*:\s*\d+", resumo)
+        votos = []
+        for linha in re.findall(r'<div class="tabela-row">(.*?)</div>\s*</div>', bloco + "</div>", re.S):
+            cel = [_txt(x) for x in re.findall(r"<div[^>]*>(.*?)</div>", linha + "</div>", re.S)]
+            if len(cel) >= 3:
+                votos.append({"partido": cel[0], "nome": cel[1], "voto": cel[2]})
+        m = re.search(r"(\d{2}/\d{2}/\d{4})", titulo)
+        saida.append({"titulo": titulo, "data": _iso(m[1]) if m else "", "resultado": resultado,
+                      "placar": " · ".join(totais), "votos": votos})
+    return saida
+
+
 def detalhe(sigla, numero, ano):
     """Retorna dict da proposição ou None se o número não existe."""
     endereco = url(sigla, numero, ano)
@@ -87,7 +111,7 @@ def detalhe(sigla, numero, ano):
         "url": endereco, "url_texto": "",
         "linha_tempo": linha_tempo,
         "comissoes": _tabela(t, "content-comissoes"),
-        "votacoes": _tabela(t, "content-votacoes"),
+        "votacoes": _votacoes(t),
     }
 
 
@@ -112,9 +136,15 @@ def salvar_detalhe(banco, d, eixos):
         data = _iso(c.get("VOTADO EM", "")) or _iso(c.get("DISTRIBUIÇÃO", ""))
         banco.evento(d["uid"], data, "parecer", " — ".join(partes), c.get("COMISSÃO"))
     for v in d["votacoes"]:
-        desc = " — ".join(f"{k.capitalize()}: {val}" for k, val in v.items() if val and k != "DOCUMENTO")
-        data = next((_iso(val) for val in v.values() if _iso(val)), "")
-        banco.evento(d["uid"], data, "votacao", desc, "Plenário ALRS")
+        for x in v["votos"]:  # guarda o partido de cada deputado (serve também para mostrar o partido dos autores)
+            banco.parlamentar("alrs", x["nome"], x["partido"])
+        banco.evento(d["uid"], v["data"], "votacao", f"{v['titulo']} — resultado: {v['resultado'] or '?'} ({v['placar']})", "ALRS")
+        if v["data"] and v["data"] >= (banco.inicio_ciclo or "9999"):
+            banco.votacao({"id": f"alrs-votacao:{d['uid']}:{v['data']}:{re.sub(r'[^a-z0-9]+', '-', v['titulo'].lower())[:60]}",
+                           "fonte": "alrs", "data": v["data"], "orgao": v["titulo"], "descricao": d["ementa"],
+                           "resultado": v["resultado"], "uid": d["uid"], "identificacao": d["identificacao"], "url": d["url"],
+                           "eixos": ",".join(eixos) if isinstance(eixos, list) else (eixos or "")},
+                          v["votos"])
     return estado
 
 

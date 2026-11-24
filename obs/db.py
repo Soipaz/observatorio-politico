@@ -36,7 +36,16 @@ CREATE TABLE IF NOT EXISTS mudancas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ciclo INTEGER, uid TEXT, campo TEXT, antes TEXT, depois TEXT, registrado_em TEXT
 );
+CREATE TABLE IF NOT EXISTS votos (
+    votacao_id TEXT, nome TEXT, partido TEXT, uf TEXT, voto TEXT,
+    UNIQUE(votacao_id, nome)
+);
+CREATE TABLE IF NOT EXISTS parlamentares (
+    fonte TEXT, nome TEXT, partido TEXT, uf TEXT, atualizado TEXT,
+    PRIMARY KEY(fonte, nome)
+);
 CREATE INDEX IF NOT EXISTS ix_eventos_ciclo ON eventos(ciclo);
+CREATE INDEX IF NOT EXISTS ix_votos_votacao ON votos(votacao_id);
 CREATE INDEX IF NOT EXISTS ix_mudancas_ciclo ON mudancas(ciclo);
 CREATE INDEX IF NOT EXISTS ix_prop_ident ON proposicoes(fonte, identificacao);
 """
@@ -48,18 +57,32 @@ CAMPOS = ["fonte", "esfera", "casa", "sigla", "numero", "ano", "identificacao", 
           "data_apresentacao", "situacao", "data_situacao", "orgao", "url", "url_texto", "eixos"]
 
 
+def placar_de(votos):
+    """'Sim 319 · Não 127 · Abstenção 1' a partir da lista de votos nominais."""
+    from collections import Counter
+    c = Counter((x.get("voto") or "?").strip() for x in votos)
+    return " · ".join(f"{k} {n}" for k, n in c.most_common())
+
+
 class Banco:
     def __init__(self, caminho=ARQUIVO):
         caminho.parent.mkdir(parents=True, exist_ok=True)
         self.con = sqlite3.connect(caminho)
         self.con.row_factory = sqlite3.Row
         self.con.executescript(ESQUEMA)
+        for col in ("placar", "tipo_votacao"):  # colunas acrescentadas depois da primeira versão
+            try:
+                self.con.execute(f"ALTER TABLE votacoes ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass
         self.ciclo = None
+        self.inicio_ciclo = None
 
     def iniciar_ciclo(self, inicio, fim):
         cur = self.con.execute("INSERT INTO ciclos(executado_em, inicio, fim) VALUES (?,?,?)",
                                (datetime.now().isoformat(timespec="seconds"), inicio, fim))
         self.ciclo = cur.lastrowid
+        self.inicio_ciclo = inicio
         return self.ciclo
 
     def fechar_ciclo(self, resumo):
@@ -113,11 +136,36 @@ class Banco:
             (uid, (data or "")[:16], tipo, (descricao or "").strip(), orgao, url, self.ciclo))
         return cur.rowcount > 0
 
-    def votacao(self, v):
+    def votacao(self, v, votos=None):
+        """Registra uma votação/decisão. `votos`: [{"nome", "partido", "uf", "voto"}] quando a votação é nominal."""
+        v = {"placar": "", "tipo_votacao": "", **v}
+        if votos:
+            v["tipo_votacao"] = "nominal"
+            if not v["placar"]:
+                v["placar"] = placar_de(votos)
         self.con.execute(
-            "INSERT OR IGNORE INTO votacoes(id, fonte, data, orgao, descricao, resultado, uid, identificacao, url, eixos, ciclo) "
-            "VALUES (:id,:fonte,:data,:orgao,:descricao,:resultado,:uid,:identificacao,:url,:eixos,:ciclo)",
+            "INSERT OR IGNORE INTO votacoes(id, fonte, data, orgao, descricao, resultado, uid, identificacao, url, eixos, ciclo, placar, tipo_votacao) "
+            "VALUES (:id,:fonte,:data,:orgao,:descricao,:resultado,:uid,:identificacao,:url,:eixos,:ciclo,:placar,:tipo_votacao)",
             {**v, "ciclo": self.ciclo})
+        for x in votos or []:
+            self.con.execute("INSERT OR IGNORE INTO votos(votacao_id, nome, partido, uf, voto) VALUES (?,?,?,?,?)",
+                             (v["id"], x.get("nome"), x.get("partido"), x.get("uf"), x.get("voto")))
+            if x.get("partido"):
+                self.parlamentar(v["fonte"], x.get("nome"), x.get("partido"), x.get("uf"))
+
+    def votos(self, votacao_id):
+        return [dict(r) for r in self.con.execute(
+            "SELECT nome, partido, uf, voto FROM votos WHERE votacao_id=? ORDER BY voto, partido, nome", (votacao_id,))]
+
+    def parlamentar(self, fonte, nome, partido, uf=None):
+        if nome and partido:
+            self.con.execute("INSERT OR REPLACE INTO parlamentares(fonte, nome, partido, uf, atualizado) VALUES (?,?,?,?,?)",
+                             (fonte, nome.strip(), partido.strip(), uf, datetime.now().date().isoformat()))
+
+    def partido_de(self, fonte, nome):
+        r = self.con.execute("SELECT partido, uf FROM parlamentares WHERE fonte=? AND lower(nome)=lower(?)",
+                             (fonte, (nome or "").strip())).fetchone()
+        return (r["partido"], r["uf"]) if r else (None, None)
 
     def marcar_acompanhar(self, uid, valor=1):
         self.con.execute("UPDATE proposicoes SET acompanhar=? WHERE uid=?", (valor, uid))

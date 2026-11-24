@@ -16,6 +16,31 @@ def _paginar(caminho, params):
         url = next((l["href"] for l in r.get("links", []) if l["rel"] == "next"), None)
 
 
+_deputados = {}
+
+
+def deputado(uri_ou_id):
+    """(nome, partido, uf) atuais de um deputado, com cache."""
+    did = str(uri_ou_id).rstrip("/").split("/")[-1]
+    if did not in _deputados:
+        try:
+            st = baixar(f"{API}/deputados/{did}")["dados"].get("ultimoStatus") or {}
+            _deputados[did] = (st.get("nome") or st.get("nomeEleitoral"), st.get("siglaPartido"), st.get("siglaUf"))
+        except RuntimeError:
+            _deputados[did] = (None, None, None)
+    return _deputados[did]
+
+
+def _com_partido(a):
+    """'Nome (PARTIDO/UF)' para deputados; outros autores (Executivo, Senado, comissões) ficam como vieram."""
+    nome = a.get("nome", "")
+    if "/deputados/" in (a.get("uri") or ""):
+        _, partido, uf = deputado(a["uri"])
+        if partido:
+            return f"{nome} ({partido}/{uf})" if uf else f"{nome} ({partido})"
+    return nome
+
+
 def _detalhe(pid):
     d = baixar(f"{API}/proposicoes/{pid}")["dados"]
     st = d.get("statusProposicao") or {}
@@ -24,7 +49,7 @@ def _detalhe(pid):
         autores = baixar(f"{API}/proposicoes/{pid}/autores")["dados"]
         if autores:
             a = min(autores, key=lambda x: (x.get("ordemAssinatura") or 999))  # primeiro signatário
-            autor = a.get("nome", "")
+            autor = _com_partido(a)
             extra = len(autores) - 1
             if extra > 0:
                 autor += f" e outros ({extra})"
@@ -137,10 +162,20 @@ def coletar_votacoes(banco, clf, inicio, fim, log):
         except RuntimeError:
             pass
         resultado = "aprovada" if det.get("aprovacao") == 1 else "rejeitada" if det.get("aprovacao") == 0 else ""
+        votos = []
+        try:  # votação nominal: como votou cada deputado (vazio quando a votação é simbólica)
+            for x in baixar(f"{API}/votacoes/{v['id']}/votos")["dados"]:
+                dep = x.get("deputado_") or {}
+                votos.append({"nome": dep.get("nome"), "partido": dep.get("siglaPartido"),
+                              "uf": dep.get("siglaUf"), "voto": x.get("tipoVoto")})
+        except RuntimeError:
+            pass
+        m_placar = re.search(r"Sim:\s*\d+.*?Total:\s*\d+", desc)
         banco.votacao({"id": f"camara:{v['id']}", "fonte": "camara", "data": v.get("dataHoraRegistro") or v.get("data"),
                        "orgao": "Plenário da Câmara", "descricao": desc, "resultado": resultado, "uid": uid,
                        "identificacao": ident, "url": FICHA.format(uid.split(":")[1]) if uid else v.get("uri", ""),
-                       "eixos": ",".join(eixos)})
+                       "eixos": ",".join(eixos), "placar": m_placar[0] if m_placar else "",
+                       "tipo_votacao": "nominal" if votos else "simbólica"}, votos)
         if uid:
             banco.evento(uid, v.get("dataHoraRegistro"), "votacao", desc, "PLEN")
         n += 1

@@ -103,6 +103,7 @@ def coletar(banco, clf, cfg, inicio, fim, log):
                        "uid": uid, "identificacao": x["identificacao"], "url": FICHA.format(x["codigoMateria"]), "eixos": ",".join(eixos)})
         res["votacoes"] += 1
     log(f"Senado: {res['votacoes']} deliberações nos 8 eixos")
+    res["votacoes_nominais"] = coletar_votos_nominais(banco, inicio, fim, log)
     banco.commit()
     return res
 
@@ -114,3 +115,31 @@ def atualizar(banco, pid, res):
     for desp in d["despachos"]:
         banco.evento(d["uid"], desp.get("data"), "tramite", desp.get("tipoMotivacao", "Despacho"), d.get("orgao"))
     return d
+
+
+def coletar_votos_nominais(banco, inicio, fim, log):
+    """Votações nominais do Plenário (como votou cada senador) das matérias que o observatório já registra."""
+    try:
+        lista = baixar(f"{API}/votacao?{urlencode({'dataInicio': inicio, 'dataFim': fim})}")
+    except RuntimeError as e:
+        log(f"  aviso: votações nominais do Senado indisponíveis: {e}")
+        return 0
+    n = 0
+    for x in lista if isinstance(lista, list) else []:
+        uid = f"senado:{x.get('idProcesso')}"
+        p = banco.obter(uid)
+        if not p:
+            continue
+        votos = [{"nome": v.get("nomeParlamentar"), "partido": v.get("siglaPartidoParlamentar"),
+                  "uf": v.get("siglaUFParlamentar"), "voto": v.get("siglaVotoParlamentar") or v.get("descricaoVotoParlamentar")}
+                 for v in (x.get("votos") or [])]
+        res = {"A": "Aprovada", "R": "Rejeitada"}.get(x.get("resultadoVotacao"), x.get("resultadoVotacao") or "")
+        banco.votacao({"id": f"senado-votacao:{x.get('codigoSessaoVotacao')}", "fonte": "senado",
+                       "data": x.get("dataSessao", ""), "orgao": "Plenário do Senado",
+                       "descricao": x.get("descricaoVotacao") or "", "resultado": res, "uid": uid,
+                       "identificacao": p["identificacao"], "url": p["url"], "eixos": p["eixos"] or "",
+                       "tipo_votacao": "secreta" if x.get("votacaoSecreta") == "S" else ""}, votos)
+        n += 1
+    banco.commit()
+    log(f"Senado: {n} votações nominais com voto de cada senador")
+    return n
