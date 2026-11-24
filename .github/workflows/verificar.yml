@@ -28,10 +28,11 @@ jobs:
         run: python -m compileall -q observatorio.py obs
       - name: Importar todos os módulos
         run: |
-          python -c "import obs.camara, obs.senado, obs.sapl, obs.alrs, obs.votacaoeletronica, obs.locais, obs.textos, obs.relatorio, obs.configurar, obs.ia, obs.db, obs.util"
+          python -c "import obs.camara, obs.senado, obs.sapl, obs.alrs, obs.votacaoeletronica, obs.locais, obs.textos, obs.relatorio, obs.configurar, obs.ia, obs.db, obs.util, obs.glossario, obs.pdf"
       - name: Gerar relatório de exemplo (sem rede)
         run: |
           cp config.exemplo.json config.json
+          sed -i 's/"pdf": true/"pdf": false/' config.json
           python - <<'EOF'
           from obs.db import Banco
           from obs import relatorio

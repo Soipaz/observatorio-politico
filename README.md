@@ -13,6 +13,7 @@ Você escolhe **o seu estado e o seu município**, e o programa acompanha toda s
 
 O relatório semanal (HTML e, se você quiser, notas no Obsidian) traz:
 
+- **o que mudou desde a última atualização**: para cada proposição que andou, a situação de antes e a de agora, os novos andamentos e, em linguagem simples, o que isso significa (as proposições acompanhadas aparecem primeiro);
 - **novas proposições** nos 8 eixos temáticos: economia/orçamento, trabalho/previdência, direitos/Constituição, desigualdade/políticas sociais, educação, saúde, segurança/justiça e meio ambiente;
 - **votações e decisões** da semana;
 - **tramitação** das proposições acompanhadas, com linha do tempo;
@@ -51,7 +52,9 @@ python observatorio.py ciclo
 
 O primeiro ciclo cobre os últimos 7 dias. Os seguintes começam de onde o anterior parou.
 
-**3. Abra o relatório:** `relatorios/index.html`
+**3. Abra o relatório:** `relatorios/ultimo.html` (o mais recente) ou `relatorios/index.html` (todos)
+
+O relatório também é salvo em **PDF** (`relatorios/ultimo.pdf` e `relatorios/AAAA-MM-DD.pdf`) quando há Microsoft Edge, Google Chrome ou Chromium instalado; para desligar, use `"pdf": false` no `config.json`.
 
 No Windows, basta dar duplo clique em **`Rodar ciclo agora.bat`**. Na primeira vez, ele abre o assistente de configuração.
 

@@ -8,5 +8,5 @@ if not exist config.json (
 echo Coletando dados oficiais... (alguns minutos)
 python -X utf8 observatorio.py ciclo
 echo.
-start "" "%~dp0relatorios\index.html"
+start "" "%~dp0relatorios\ultimo.html"
 pause

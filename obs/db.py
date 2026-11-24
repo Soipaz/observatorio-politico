@@ -32,9 +32,17 @@ CREATE TABLE IF NOT EXISTS ciclos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     executado_em TEXT, inicio TEXT, fim TEXT, resumo TEXT
 );
+CREATE TABLE IF NOT EXISTS mudancas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ciclo INTEGER, uid TEXT, campo TEXT, antes TEXT, depois TEXT, registrado_em TEXT
+);
 CREATE INDEX IF NOT EXISTS ix_eventos_ciclo ON eventos(ciclo);
+CREATE INDEX IF NOT EXISTS ix_mudancas_ciclo ON mudancas(ciclo);
 CREATE INDEX IF NOT EXISTS ix_prop_ident ON proposicoes(fonte, identificacao);
 """
+
+# campos cuja mudança é registrada com o valor anterior (para o relatório mostrar "antes → agora")
+MONITORADOS = ["situacao", "ementa", "url_texto", "orgao"]
 
 CAMPOS = ["fonte", "esfera", "casa", "sigla", "numero", "ano", "identificacao", "apelido", "ementa", "autor",
           "data_apresentacao", "situacao", "data_situacao", "orgao", "url", "url_texto", "eixos"]
@@ -87,6 +95,11 @@ class Banco:
             if len(juntos) > 1 and "outros" in juntos:
                 juntos.remove("outros")
             sets["eixos"] = ",".join(juntos)
+        for c in MONITORADOS:
+            novo, velho = (p.get(c) or "").strip(), (antigo[c] or "").strip()
+            if novo and velho and novo != velho:
+                self.con.execute("INSERT INTO mudancas(ciclo, uid, campo, antes, depois, registrado_em) VALUES (?,?,?,?,?,?)",
+                                 (self.ciclo, p["uid"], c, velho, novo, agora))
         sets["ultima_coleta"] = agora
         self.con.execute(f"UPDATE proposicoes SET {','.join(k + '=?' for k in sets)} WHERE uid=?", list(sets.values()) + [p["uid"]])
         if mudou and p.get("situacao"):

@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from .util import RAIZ
 from .textos import ler_explicacao
-from . import locais
+from . import glossario, locais
 
 PASTA_REL = RAIZ / "relatorios"
 PASTA_ANA = RAIZ / "analises"
@@ -83,6 +83,12 @@ def montar(banco, ciclo, cfg):
         acompanhadas.append(dict(p, eventos=ev, mexeu=mexeu))
     acompanhadas.sort(key=lambda p: (not p["mexeu"], p["fonte"], p["identificacao"]))
 
+    mudancas = montar_mudancas(c, cid, props)
+    mudaram = {p["uid"] for p in mudancas}
+    for p in acompanhadas:  # quem mudou desde a última atualização também conta como "movimentou"
+        p["mexeu"] = p["mexeu"] or p["uid"] in mudaram
+    acompanhadas.sort(key=lambda p: (not p["mexeu"], p["fonte"], p["identificacao"]))
+
     resumo = json.loads(ciclo["resumo"] or "{}")
     erros = {k: v["erro"] for k, v in resumo.items() if isinstance(v, dict) and "erro" in v}
     contagem = {k: 0 for k in cfg["eixos"]}
@@ -92,7 +98,50 @@ def montar(banco, ciclo, cfg):
                 contagem[x] += 1
     return {"ciclo": cid, "inicio": ini, "fim": fim, "executado_em": ciclo["executado_em"],
             "novas": novas, "movimentadas": movimentadas, "decisoes": decisoes,
-            "acompanhadas": acompanhadas, "contagem_eixos": contagem, "erros": erros}
+            "acompanhadas": acompanhadas, "contagem_eixos": contagem, "erros": erros, "mudancas": mudancas}
+
+
+ROTULO_CAMPO = {"ementa": "A ementa (resumo oficial do projeto) foi alterada",
+                "url_texto": "Saiu uma nova versão do texto (inteiro teor)",
+                "orgao": "O projeto mudou de órgão/comissão"}
+
+
+def montar_mudancas(c, cid, props):
+    """Proposições que mudaram neste ciclo, com o 'antes', o 'agora', os novos eventos e o que isso significa.
+
+    Ficam de fora as registradas pela primeira vez neste ciclo (para elas não existe um 'antes')."""
+    registradas_agora = {r[0] for r in c.execute("SELECT DISTINCT uid FROM eventos WHERE ciclo=? AND tipo='apresentacao'", (cid,))}
+    por_uid = {}
+    for r in c.execute("SELECT * FROM mudancas WHERE ciclo=? ORDER BY id", (cid,)):
+        if r["uid"] in props and r["uid"] not in registradas_agora:
+            por_uid.setdefault(r["uid"], {"campos": [], "eventos": []})["campos"].append(dict(r))
+    for r in c.execute("SELECT * FROM eventos WHERE ciclo=? AND tipo IN ('tramite','parecer','votacao','situacao') "
+                       "ORDER BY data, id", (cid,)):
+        if r["uid"] in props and r["uid"] not in registradas_agora:
+            por_uid.setdefault(r["uid"], {"campos": [], "eventos": []})["eventos"].append(dict(r))
+    saida = []
+    for uid, m in por_uid.items():
+        p = props[uid]
+        sit = [x for x in m["campos"] if x["campo"] == "situacao"]
+        antes = sit[0]["antes"] if sit else ""
+        agora = p.get("situacao") or (sit[-1]["depois"] if sit else "")
+        vistos, eventos = set(), []
+        for ev in m["eventos"]:
+            chave = (ev["descricao"] or "").strip().lower()
+            if chave and chave not in vistos and chave != (agora or "").strip().lower():
+                vistos.add(chave)
+                eventos.append(ev)
+        if not antes and not eventos and not [x for x in m["campos"] if x["campo"] != "situacao"]:
+            continue
+        outros = [dict(x, rotulo=ROTULO_CAMPO.get(x["campo"], x["campo"])) for x in m["campos"] if x["campo"] != "situacao"]
+        significados = glossario.explicar_varios([agora] + [ev["descricao"] for ev in reversed(eventos)], limite=3)
+        if any(x["campo"] == "url_texto" for x in outros):
+            significados.append("Como o texto mudou, a explicação \"Do que se trata\" será refeita a partir da nova versão.")
+        saida.append(dict(p, antes=antes, agora=agora, novos_eventos=eventos[-6:], outros_campos=outros,
+                          significados=significados))
+    saida.sort(key=lambda p: (not p["acompanhar"], {"federal": 0, "estadual": 1, "municipal": 2}.get(p["esfera"], 3),
+                              p["fonte"], p["identificacao"]))
+    return saida
 
 
 def uids_do_ciclo(d):
@@ -178,6 +227,18 @@ nav.toc a{color:var(--accent);text-decoration:none}
 .explica-t{font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--accent);margin-bottom:2px}
 .explica p{margin:6px 0}.explica ul{margin:4px 0 6px;padding-left:20px}.explica li{margin:2px 0}
 .sem-exp{font-style:italic}
+.diff{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:stretch;margin:8px 0}
+.diff>div{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14.5px}
+.diff .antes{background:var(--bg);color:var(--muted)}
+.diff .agora{background:var(--accent-soft);font-weight:600}
+.diff .seta{border:none;align-self:center;font-size:20px;color:var(--accent);padding:0}
+.diff small{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--muted);margin-bottom:2px}
+.mudou-campo{font-size:14px;margin:4px 0}
+.significa{background:var(--warn-soft);border-left:4px solid var(--warn);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:15px}
+.significa .explica-t{color:var(--warn)}
+.significa ul{margin:4px 0;padding-left:20px}
+.tag-acomp{font-size:11.5px;border-radius:4px;padding:1px 7px;background:var(--ink);color:var(--bg);font-weight:600}
+@media (max-width:600px){.diff{grid-template-columns:1fr}.diff .seta{transform:rotate(90deg);justify-self:center}}
 td .explica{font-size:14px;margin:6px 0 0}
 .meta{font-size:13.5px;color:var(--muted)}
 .meta b{color:var(--ink);font-weight:600}
@@ -236,6 +297,63 @@ def cartao(p, cfg, extra="", hot=False):
 <p class="ementa"><span class="rot">Ementa oficial:</span> {e(p['ementa'])}</p>
 {bloco_exp}<div class="meta"><b>Autoria:</b> {e(p.get('autor') or '—')} · <b>Apresentação:</b> {data_br(p.get('data_apresentacao'))}<br>{situ}{orgao}</div>
 {extra}<div class="links">{''.join(links)}</div></article>"""
+
+
+def negrito(t):
+    """Escapa o texto e converte **negrito** do Markdown."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", e(t))
+
+
+def cartao_mudanca(p, cfg):
+    exp = ler_explicacao(p["uid"])
+    import re as _re
+    m = _re.search(r"\*\*Em poucas palavras:\*\*\s*(.+)", exp)
+    resumo = m[1].strip() if m else p["ementa"]
+    if p.get("antes"):
+        diff = (f'<div class="diff"><div class="antes"><small>Antes</small>{e(p["antes"])}</div><div class="seta">→</div>'
+                f'<div class="agora"><small>Agora{" · " + data_br(p["data_situacao"]) if p.get("data_situacao") else ""}</small>{e(p["agora"])}</div></div>')
+    else:
+        diff = (f'<div class="diff"><div class="antes"><small>Antes</small>(situação anterior não registrada)</div><div class="seta">→</div>'
+                f'<div class="agora"><small>Agora{" · " + data_br(p["data_situacao"]) if p.get("data_situacao") else ""}</small>{e(p["agora"] or "—")}</div></div>')
+    campos = ""
+    for x in p["outros_campos"]:
+        if x["campo"] == "url_texto":
+            campos += f'<p class="mudou-campo">• {e(x["rotulo"])}: <a href="{e(u(x["depois"]))}" target="_blank" rel="noopener">abrir o texto novo</a></p>'
+        else:
+            campos += f'<p class="mudou-campo">• {e(x["rotulo"])}: <s>{e(x["antes"])}</s> → <b>{e(x["depois"])}</b></p>'
+    sig = "".join(f"<li>{e(t)}</li>" for t in p["significados"])
+    sig = f'<div class="significa"><div class="explica-t">O que isso significa</div><ul>{sig}</ul></div>' if sig else ""
+    evs = ""
+    if p["novos_eventos"]:
+        evs = '<div class="meta"><b>Novos andamentos registrados:</b></div><ul class="ev">' + "".join(
+            f'<li class="novo"><span class="d">{data_br(x["data"])}</span>{e(x["descricao"])}'
+            + (f' <a href="{e(u(x["url"]))}" target="_blank" rel="noopener">[doc]</a>' if x.get("url") else "") + "</li>"
+            for x in p["novos_eventos"]) + "</ul>"
+    acomp = '<span class="tag-acomp">ACOMPANHADA</span>' if p.get("acompanhar") else ""
+    return f"""<article class="card{' hot' if p.get('acompanhar') else ''}" data-eixos="{e(p.get('eixos') or 'outros')}">
+<div class="head"><span class="id">{e(p['identificacao'])}</span><span class="casa">{e(p['casa'])}</span>{acomp}{tags(p, cfg)}</div>
+<p class="ementa">{negrito(resumo)}</p>{diff}{campos}{sig}{evs}
+<div class="links"><a href="{e(u(p['url']))}" target="_blank" rel="noopener">Ficha oficial</a></div></article>"""
+
+
+def secao_mudancas(d, cfg):
+    lista = d.get("mudancas") or []
+    if not lista:
+        return ('<section id="mudancas"><h2>O que mudou desde a última atualização</h2>'
+                '<p class="sub">Nenhuma proposição já registrada teve mudança desde a atualização anterior.</p></section>')
+    acomp = [p for p in lista if p.get("acompanhar")]
+    outras = [p for p in lista if not p.get("acompanhar")]
+    corpo = "".join(cartao_mudanca(p, cfg) for p in acomp) or '<p class="sub">Nenhuma das proposições acompanhadas mudou desde a atualização anterior.</p>'
+    if outras:
+        grupos = ""
+        for esf, rot in (("federal", "Federais"), ("estadual", "Estaduais"), ("municipal", "Municipais")):
+            g = [p for p in outras if p.get("esfera") == esf]
+            if g:
+                grupos += f"<h3>{rot} ({len(g)})</h3>" + "".join(cartao_mudanca(p, cfg) for p in g)
+        corpo += f'<details><summary>Ver as outras {len(outras)} proposições que mudaram</summary>{grupos}</details>'
+    return (f'<section id="mudancas"><h2>O que mudou desde a última atualização</h2>'
+            f'<p class="sub">Comparação com a atualização anterior: situação de antes e de agora, novos andamentos e, em linguagem simples, '
+            f'o que isso significa. As proposições acompanhadas aparecem primeiro.</p>{corpo}</section>')
 
 
 def lista_eventos(evs, ini):
@@ -335,14 +453,16 @@ def html_relatorio(d, cfg, analise_html):
 <header class="top"><div class="kicker">Observatório Político · {e(N['titulo'])} · Ciclo {d['ciclo']}</div>
 <h1>Relatório semanal — {data_extenso(fim)}</h1>
 <p class="sub">Janela de coleta: {data_br(ini)} a {data_br(fim)} · Coleta executada em {data_br(d['executado_em'])} às {d['executado_em'][11:16]} · Fontes: APIs oficiais da Câmara e do Senado{fontes_locais}</p>
-<nav class="toc"><a href="#resumo">1. Resumo</a><a href="#analise">2. Análise</a><a href="#acompanhadas">3. Acompanhadas</a><a href="#decisoes">4. Decisões</a><a href="#novas">5. Novas federais</a><a href="#movimentacoes">6. Tramitação</a>{nav_local}<a href="#metodo">{n_metodo}. Método</a><a href="index.html">Todos os relatórios</a></nav></header>
+<nav class="toc"><a href="#resumo">1. Resumo</a><a href="#mudancas">O que mudou</a><a href="#analise">2. Análise</a><a href="#acompanhadas">3. Acompanhadas</a><a href="#decisoes">4. Decisões</a><a href="#novas">5. Novas federais</a><a href="#movimentacoes">6. Tramitação</a>{nav_local}<a href="#metodo">{n_metodo}. Método</a><a href="index.html">Todos os relatórios</a></nav></header>
 {erros}
 <section id="resumo"><h2>1. Resumo executivo</h2>
-<div class="tiles"><div class="tile"><b>{len(fed_novas)}</b><span>novas proposições federais nos 8 eixos</span></div>
+<div class="tiles"><div class="tile"><b>{len(d.get('mudancas') or [])}</b><span>proposições que mudaram desde a última atualização ({sum(1 for p in d.get('mudancas') or [] if p.get('acompanhar'))} acompanhadas)</span></div>
+<div class="tile"><b>{len(fed_novas)}</b><span>novas proposições federais nos 8 eixos</span></div>
 <div class="tile"><b>{len(d['decisoes'])}</b><span>votações e deliberações registradas</span></div>
 <div class="tile"><b>{len(mexeram)}/{len(d['acompanhadas'])}</b><span>acompanhadas com movimentação</span></div>
 {tiles_locais}</div>
 <p class="sub">Filtre todo o relatório por eixo (clique para combinar):</p><div class="chips">{chips}</div></section>
+{secao_mudancas(d, cfg)}
 <section id="analise"><h2>2. Análise acadêmica</h2>{analise}</section>
 <section id="acompanhadas"><h2>3. Proposições em acompanhamento prioritário</h2>
 <p class="sub">Definidas em <code>acompanhar.txt</code>. Destacadas as que tiveram movimentação na janela; a linha azul marca eventos novos.</p>{acomp or '<p class="sub">Lista vazia.</p>'}</section>
@@ -474,6 +594,15 @@ def escrever_obsidian(d, cfg, analise_md):
     acomp = "\n".join(f"- [[{nome_nota(p)}]] — {'🔵 movimentou: ' if p['mexeu'] else ''}{p.get('situacao') or '—'} ({data_br(p.get('data_situacao'))})" for p in d["acompanhadas"])
     mun = "\n".join(linha(p) for p in d["novas"] if p["esfera"] == "municipal") or "- Nenhuma matéria nova na janela."
     est = "\n".join(linha(p) for p in d["novas"] if p["esfera"] == "estadual") or "- Nenhum projeto novo nos 8 eixos na janela."
+    def linha_mud(p):
+        antes = f"{p['antes']} → " if p.get("antes") else ""
+        sig = " ".join(p["significados"][:1])
+        return f"- **{p['identificacao']}** ({p['casa']}) — {antes}**{p.get('agora') or '—'}**" + (f"  \n  *{sig}*" if sig else "")
+    mud_acomp = [p for p in d.get("mudancas") or [] if p.get("acompanhar")]
+    mud_outras = [p for p in d.get("mudancas") or [] if not p.get("acompanhar")]
+    bloco_mud = "\n".join(linha_mud(p) for p in mud_acomp) or "- Nenhuma proposição acompanhada mudou."
+    if mud_outras:
+        bloco_mud += f"\n\n*Outras {len(mud_outras)} proposições mudaram — veja o relatório HTML.*"
     bloco_local = ""
     if N.get("tem_municipal"):
         bloco_local += f"## {N['municipio']} — matérias novas\n{mun}\n\n"
@@ -490,6 +619,9 @@ tags: [observatorio/relatorio]
 # Observatório Político — {data_extenso(d['fim'])}
 
 Janela: {data_br(d['inicio'])} a {data_br(d['fim'])} · [Abrir relatório completo (HTML)](file:///{(PASTA_REL / (d['fim'] + '.html')).as_posix()})
+
+## O que mudou desde a última atualização
+{bloco_mud}
 
 ## Análise acadêmica
 {analise_md.strip() if analise_md else '> [!warning] Análise ainda não escrita para este ciclo.'}
@@ -546,6 +678,10 @@ def gerar(banco, ciclo, cfg):
           "decisoes": [{k: v[k] for k in ("data", "orgao", "uid", "identificacao", "descricao", "resultado", "url", "eixos")} for v in d["decisoes"]],
           "novas": [enxuto(p) for p in d["novas"]],
           "movimentadas": [dict(enxuto(p), eventos=[{k: x[k] for k in ("data", "descricao")} for x in p["eventos"]]) for p in d["movimentadas"]],
+          "mudancas": [dict(enxuto(p), acompanhada=bool(p.get("acompanhar")), antes=p["antes"], agora=p["agora"],
+                            novos_eventos=[{k: x[k] for k in ("data", "descricao")} for x in p["novos_eventos"]],
+                            outras_mudancas=[{k: x[k] for k in ("campo", "antes", "depois")} for x in p["outros_campos"]],
+                            significado=p["significados"]) for p in d.get("mudancas") or []],
           "erros": d["erros"]}
     arq_json = PASTA_REL / f"{d['fim']}.json"
     arq_json.write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -553,7 +689,14 @@ def gerar(banco, ciclo, cfg):
     arq_html = PASTA_REL / f"{d['fim']}.html"
     arq_html.write_text(html_relatorio(d, cfg, md_para_html(analise_md) if analise_md else ""), encoding="utf-8")
     (PASTA_REL / "index.html").write_text(html_indice(cfg), encoding="utf-8")
-    saida = [arq_html, arq_json]
+    (PASTA_REL / "ultimo.html").write_text(arq_html.read_text(encoding="utf-8"), encoding="utf-8")
+    if cfg.get("pdf", True):  # PDF ao lado do HTML (precisa de Edge, Chrome ou Chromium instalado)
+        from . import pdf
+        arq_pdf = pdf.exportar(arq_html)
+        if arq_pdf:
+            import shutil
+            shutil.copyfile(arq_pdf, PASTA_REL / "ultimo.pdf")
+    saida = [arq_html, arq_json] + ([arq_html.with_suffix(".pdf")] if arq_html.with_suffix(".pdf").exists() else [])
     try:
         saida += escrever_obsidian(d, cfg, analise_md)
     except OSError as ex:

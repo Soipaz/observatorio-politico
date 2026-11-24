@@ -315,5 +315,6 @@
   "modelo": "claude-opus-5-5",
   "esforco": "medium",
   "max_explicacoes_por_ciclo": 200
- }
+ },
+ "pdf": true
 }
