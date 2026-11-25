@@ -2,4 +2,4 @@
 pypdf>=5.0
 
 # Opcional: escrita automática das explicações e da análise pelo Claude (API da Anthropic)
-anthropic>=2.10
+anthropic>=2.12.0
