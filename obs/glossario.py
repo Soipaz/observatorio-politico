@@ -88,6 +88,8 @@ REGRAS = [
      "Foi apresentado um substitutivo: uma nova versão do texto que substitui a original."),
     (r"audiencia publica",
      "Haverá (ou houve) audiência pública: reunião aberta para ouvir especialistas e a sociedade sobre o tema."),
+    (r"(ag\.?|aguardando) analise de (in)?constitucionalidade",
+     "A Presidência da Câmara está fazendo uma análise preliminar: verifica se o projeto pode seguir para as comissões ou se deve ser devolvido ao autor por ser claramente inconstitucional."),
     (r"aguardando (autorizacao do )?despacho",
      "O projeto chegou e aguarda o despacho da Mesa, que define por quais comissões ele vai passar."),
     (r"despach|^distribuicao$|distribuid[ao] (as|a) comiss|encaminhad[ao] (as|a) comiss|comissoes tematicas",

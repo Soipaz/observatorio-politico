@@ -117,13 +117,14 @@ def preparar(banco, uids, log=print, cfg=None):
         meta_arq = base.with_suffix(".json")
         meta = json.loads(meta_arq.read_text(encoding="utf-8")) if meta_arq.exists() else None
         # reaproveita o que já foi baixado; rebaixa só se o link do texto mudou (nova versão)
-        if not meta or meta.get("url_texto") != (p.get("url_texto") or ""):
+        if not meta or meta.get("url_texto") != (p.get("url_texto") or "") or meta.get("incompleto"):
             try:
                 docs = _documentos(p, cfg or carregar_config())
             except Exception as e:
                 log(f"  aviso: {p['identificacao']} ({p['fonte']}): não consegui listar documentos: {e}")
                 docs = []
             textos, lidos, digitalizados = [], [], []
+            falhas_item = 0
             for i, (rot, url) in enumerate(docs):
                 try:
                     dados, tipo = _baixar_bytes(url)
@@ -140,13 +141,15 @@ def preparar(banco, uids, log=print, cfg=None):
                     baixados += 1
                 except Exception as e:
                     falhas += 1
+                    falhas_item += 1
                     log(f"  aviso: {p['identificacao']} — {rot}: {e}")
             texto = "\n\n".join(textos)
             base.with_suffix(".txt").write_text(texto, encoding="utf-8")
             meta = {"uid": uid, "url_texto": p.get("url_texto") or "", "documentos": lidos,
                     "digitalizados": digitalizados, "caracteres": len(texto),
                     "sha": hashlib.sha1(texto.encode()).hexdigest()[:12],
-                    "baixado_em": datetime.now().isoformat(timespec="seconds")}
+                    "baixado_em": datetime.now().isoformat(timespec="seconds"),
+                    "incompleto": falhas_item > 0}  # algum documento falhou: tenta de novo na próxima vez
             meta_arq.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
         exp = _meta_explicacao(uid)

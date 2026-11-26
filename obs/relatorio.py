@@ -79,6 +79,11 @@ def montar(banco, ciclo, cfg):
     decisoes = [dict(r) for r in c.execute("SELECT * FROM votacoes WHERE ciclo=? ORDER BY fonte, data", (cid,))]
     for v in decisoes:
         v["votos"] = banco.votos(v["id"])
+    # mesma decisão registrada duas vezes (com e sem votos nominais): fica só a versão com os votos
+    com_votos = {(v.get("uid"), (v.get("data") or "")[:10]) for v in decisoes if v["votos"]}
+    decisoes = [v for v in decisoes if v["votos"] or v.get("fonte") in ("camara", "senado")
+                or (v.get("uid"), (v.get("data") or "")[:10]) not in com_votos]
+    for v in decisoes:
         if v["votos"] and not v.get("placar"):
             from .db import placar_de
             v["placar"] = placar_de(v["votos"])
